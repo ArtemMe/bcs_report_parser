@@ -1,3 +1,6 @@
-./report_bcs/*
-./result/*
 .idea
+/report_bcs/**.rar
+/report_bcs/**.zip
+
+/result/**.sign
+/result/**.xls
