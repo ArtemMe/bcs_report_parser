@@ -4,3 +4,4 @@
 
 /result/**.sign
 /result/**.xls
+/venv/
