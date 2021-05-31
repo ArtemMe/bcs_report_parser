@@ -4,8 +4,7 @@ from rarfile import RarFile
 import xlsxwriter
 import os
 
-
-TABLE_INSTRUMENTS_TYPE = ["Акция", "Пай"]
+TABLE_INSTRUMENTS_TYPE = ["Акция", "Пай", "АДР"] # добавить АДР пример FIVE_ADR
 TABLE_INSTRUMENTS_COLUMN = ["", "Дата", "Номер", "Время", "Куплено, шт", "Цена", "Сумма платежа", "Продано, шт", "Цена продажи",
                      "Сумма выручки", "Валюта", "Валюта платежа", "Дата соверш.", "Время соверш.", "Тип сделки",
                      "Оплата (факт)", "Поставка (факт)", "Место сделки"]
@@ -15,6 +14,9 @@ INTRUMENTS_TRANSLATION = {
     "FXWO_RM": "FXWO",
     "NVTK_02": "NVTK",
     "ROSN": "MCX:ROSN",
+    "FXCN_RM": "FXCN",
+    "BABA_US": "BABA",
+    "FIVE_ADR": "FIVE",
 }
 IGNORING_INSTRUMENTS = ["GAZP2", "SKFL_01"]
 
@@ -47,7 +49,7 @@ def parse_instruments(sheet, start_row):
         if instrument_type in TABLE_INSTRUMENTS_TYPE:
             ticket_pair = parse_instruments_table(sheet, index + 1, instrument_type)
             instrument_map[instrument_type] = ticket_pair[0]
-            index = index + ticket_pair[1]
+            index = ticket_pair[1]
         else:
             index = index + 1
             continue
