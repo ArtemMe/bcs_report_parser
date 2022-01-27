@@ -4,6 +4,7 @@ from rarfile import RarFile
 import xlsxwriter
 import os
 import re
+from datetime import datetime
 
 TABLE_INSTRUMENTS_COLUMN = ["", "Дата", "Номер", "Время", "Куплено, шт", "Цена", "Сумма платежа", "Продано, шт", "Цена продажи",
                      "Сумма выручки", "Валюта", "Валюта платежа", "Дата соверш.", "Время соверш.", "Тип сделки",
@@ -103,33 +104,52 @@ def find_zip_archive(path, path_to_extract):
             unrar_files(path+"/"+zip_archive, path_to_extract)
 
 
-def write_row_to_xls(worksheet, row, portfolio_cost, start_period, end_period, general_agreement):
+def write_row_to_xls(worksheet, row, portfolio_return):
     col = 0
 
-    worksheet.write(row, col, portfolio_cost.start_period_cost)
-    worksheet.write(row, col+1, portfolio_cost.end_period_cost)
-    worksheet.write(row, col + 2, portfolio_cost.getRatio())
-    worksheet.write(row, col + 3, start_period)
-    worksheet.write(row, col + 4, end_period)
-    worksheet.write(row, col + 5, general_agreement)
+    worksheet.write(row, col, portfolio_return.start_period_cost)
+    worksheet.write(row, col+1, portfolio_return.end_period_cost)
+    worksheet.write(row, col + 2, portfolio_return.ratio)
+    worksheet.write(row, col + 3, portfolio_return.start_period_date)
+    worksheet.write(row, col + 4, portfolio_return.end_period_date)
+    worksheet.write(row, col + 5, portfolio_return.general_agreement)
 
 
-class DealsType:
-    SELL = 0
-    BUY = 1
+def mergeBills(portfolio_return_list):
+    portfolio_map = {}
+    for portfolio_return_row in portfolio_return_list:
+        list = portfolio_map.get(portfolio_return_row.start_period_date)
+        if list is None:
+            portfolio_map[portfolio_return_row.start_period_date] = [portfolio_return_row]
+            continue
+        list.append(portfolio_return_row)
+        portfolio_map[portfolio_return_row.start_period_date] = list
 
+    portfolio_return_merged_list = []
+    for portfolio_list in portfolio_map.values():
+        first_account = portfolio_list[0]
 
-class InstrumentRow(object):
+        if len(portfolio_list) > 1:
+            second_account = portfolio_list[1]
+            start_period_cost = first_account.start_period_cost + second_account.start_period_cost
+            end_period_cost = first_account.end_period_cost + second_account.end_period_cost
+            ratio = (end_period_cost - start_period_cost)*100/start_period_cost
 
-    def __init__(self, ticket_name, date, price, deals_type, currency, instrument_type, amount):
-        self.ticket_name = ticket_name
-        self.date = date
-        self.price = price
-        self.deals_type = deals_type
-        self.currency = currency
-        self.instrument_type = instrument_type
-        self.amount = amount
-        pass
+            portfolio_return_merged_list.append(
+                PortfolioReturnRow(
+                    start_period_cost,
+                    end_period_cost,
+                    ratio,
+                    first_account.start_period_date,
+                    first_account.end_period_date,
+                    first_account.general_agreement
+                )
+            )
+            continue
+
+        portfolio_return_merged_list.append(first_account)
+
+    return portfolio_return_merged_list
 
 
 class PortfolioCost(object):
@@ -139,8 +159,24 @@ class PortfolioCost(object):
 
     def getRatio(self):
         if self.start_period_cost == 0:
+            return 0
+        return (self.end_period_cost-self.start_period_cost)*100/self.start_period_cost
+
+
+class PortfolioReturnRow(object):
+    def __init__(
+            self, start_period_cost, end_period_cost, ratio, start_period_date, end_period_date, general_agreement):
+        self.start_period_cost = float(start_period_cost)
+        self.end_period_cost = float(end_period_cost)
+        self.start_period_date = start_period_date
+        self.end_period_date = end_period_date
+        self.ratio = float(ratio)
+        self.general_agreement = general_agreement
+
+    def getRatio(self):
+        if self.start_period_cost == 0:
             return 100
-        return self.end_period_cost*100/self.start_period_cost
+        return (self.end_period_cost-self.start_period_cost)*100/self.start_period_cost
 
 
 if __name__ == '__main__':
@@ -150,18 +186,8 @@ if __name__ == '__main__':
     find_zip_archive(dir_with_deals_arhive, dir_with_unpacked_files)
 
     entries = os.listdir(dir_with_unpacked_files)
-    row = 1
-    result_report_xsl_name = "analytics_report.xlsx"
-    workbook = xlsxwriter.Workbook(result_report_xsl_name)
-    worksheet = workbook.add_worksheet()
 
-    col = 0
-    worksheet.write(row, col, "Начало периода")
-    worksheet.write(row, col + 1, "Конец периода")
-    worksheet.write(row, col + 2, "Отношение")
-    worksheet.write(row, col + 3, "Начало периода")
-    worksheet.write(row, col + 4, "Конец периода")
-    worksheet.write(row, col + 4, "Генеральное соглашение")
+    portfolio_return_list = []
 
     for report in entries:
         if report.find("xls") != -1:
@@ -175,12 +201,40 @@ if __name__ == '__main__':
             general_agreement = parse_general_agreement(sh, general_agreement_row)
 
             assets_section_row = find_assets_section(sh)
-            print(assets_section_row)
 
             portfolio_cost = parse_start_end_portofolio_cost(sh, assets_section_row)
 
-            write_row_to_xls(worksheet, row, portfolio_cost, start_period, end_period, general_agreement)
-            row = row + 1
+            portfolio_return_row = PortfolioReturnRow(
+                portfolio_cost.start_period_cost,
+                portfolio_cost.end_period_cost,
+                portfolio_cost.getRatio(),
+                start_period,
+                end_period,
+                general_agreement
+            )
+
+            portfolio_return_list.append(portfolio_return_row)
+
+    result_report_xsl_name = "analytics_report.xlsx"
+    workbook = xlsxwriter.Workbook(result_report_xsl_name)
+    worksheet = workbook.add_worksheet()
+
+    row = 1
+    col = 0
+    worksheet.write(row, col, "Start period cost")
+    worksheet.write(row, col + 1, "End period cost")
+    worksheet.write(row, col + 2, "Ratio")
+    worksheet.write(row, col + 3, "Start date")
+    worksheet.write(row, col + 4, "End date")
+    worksheet.write(row, col + 4, "General agreement")
+
+    portfolio_return_merged_list = mergeBills(portfolio_return_list)
+    date_pattern = '%d.%m.%Y'
+    portfolio_return_merged_list.sort(key=lambda x:  datetime.strptime(x.start_period_date, date_pattern), reverse=False)
+
+    for portfolio_return in portfolio_return_merged_list:
+        write_row_to_xls(worksheet, row, portfolio_return)
+        row = row + 1
 
     workbook.close()
 
